@@ -1,0 +1,20 @@
+{
+  "name": "discord-support-bot",
+  "version": "1.0.0",
+  "description": "A standalone web application for managing user inquiries and streamlining support in Discord communities with AI assistance.",
+  "main": "server/index.mjs",
+  "scripts": {
+    "start": "node server/index.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "langchain": "^0.3.2",
+    "moment-timezone": "^0.5.46",
+    "winston": "^3.15.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  }
+}
