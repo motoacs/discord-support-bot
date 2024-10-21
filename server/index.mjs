@@ -10,6 +10,17 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 // import { ChatPromptTemplate } from '@langchain/core/prompts';
 // dotenv
 import dotenv from 'dotenv';
+// helmet
+import helmet from 'helmet';
+// express-rate-limit
+import rateLimit from 'express-rate-limit';
+// cors
+import cors from 'cors';
+// helmet/csp
+import { contentSecurityPolicy } from 'helmet';
+// csurf
+import csurf from 'csurf';
+import cookieParser from 'cookie-parser';
 
 // path
 import { fileURLToPath } from 'url';
@@ -31,7 +42,7 @@ const MODEL_NAME = 'gemini-1.5-flash-002';
 const PROMPT_TEMPLATE = [
   [
     'system',
-    `あなたは、X-Plane Japan UsersというDiscordサーバーのサポートaiです。
+    `あなたは、X-Plane Japan UsersというDiscordサーバーの親切なサポートaiです。
     userの困りごとを客観的に整理して、Discordサーバーのどこに、
     どのような文章とデータを添えて質問すれば良いか、案内をするのが仕事です。
     ただしuserの質問がシンプルで、aiであるあなたでも十分に回答できる場合は、直接回答を示して対応を終了します。
@@ -59,7 +70,6 @@ const PROMPT_TEMPLATE = [
 let logger, server, llm;
 
 // variables
-
 
 // initialize
 async function init() {
@@ -91,20 +101,53 @@ async function init() {
   logger.info('=========================================');
   logger.info('Starting Server');
 
-
   // create express server
   server = express();
+
+  // set security middleware
+  server.use(helmet());
+  server.use(contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", 'https://trusted.cdn.com'],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  }));
+
+  // set rate limiting
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: 'Too many requests, please try again later.',
+  });
+  server.use(limiter);
+
+  // set CORS policy
+  server.use(cors({
+    origin: 'https://chat.flynav.net', // replace with your allowed origin
+    methods: ['GET', 'POST'],
+  }));
+
   // set middleware
   server.use(express.json());
+  server.use(cookieParser());
+
+  // set CSRF protection
+  const csrfProtection = csurf({ cookie: true });
+  server.use(csrfProtection);
+
   server.use((req, res, next) => {
     res.set('X-Robots-Tag', 'noindex, nofollow');
+    res.cookie('XSRF-TOKEN', req.csrfToken()); // Set CSRF token in a cookie for client use
     next();
   });
+
   // set static path
   server.use(express.static(PUBLIC_PATH));
 
   // set routes
-  server.post('/api/chat', async (req, res) => {
+  server.post('/api/chat', csrfProtection, async (req, res) => {
     const { messages } = req.body;
     logger.debug(`Received messages: ${JSON.stringify(messages)}`);
     try {
@@ -161,10 +204,8 @@ async function init() {
     temperature: 0,
     maxRetries: 2,
     apiKey: process.env.GEMINI_API_KEY,
-
   });
 }
-
 
 // start
 init().catch((err) => {

@@ -1,5 +1,9 @@
 document.addEventListener('DOMContentLoaded', init);
 
+const MESSAGES_ARRAY_LENGTH_LIMIT = 30;
+const MESSAGES_TEXT_LENGTH_LIMIT = 10000;
+const MESSAGE_LENGTH_LIMIT = 5000;
+
 async function init() {
   const { createApp } = Vue;
 
@@ -19,9 +23,19 @@ async function init() {
         if (this.newMessage.trim() === '') {
           return;
         }
-        console.debug('Sending message:', this.newMessage);
 
-        const userMessage = this.newMessage;
+        // limit messages length
+        if (this.messages.length > MESSAGES_ARRAY_LENGTH_LIMIT || this.messages.some((m) => m[1].length > MESSAGE_LENGTH_LIMIT) || JSON.stringify(this.messages).length > MESSAGES_TEXT_LENGTH_LIMIT) {
+          console.error('Message is too long');
+          this.error = true;
+          return;
+        }
+
+        // sanitize message
+        const sanitizedMessage = DOMPurify.sanitize(this.newMessage);
+        console.debug('Sending sanitized message:', sanitizedMessage);
+
+        const userMessage = sanitizedMessage;
         this.messages.push(['user', userMessage]);
         this.newMessage = '';
         this.loading = true;
@@ -33,10 +47,13 @@ async function init() {
 
         try {
           const sendData = JSON.parse(JSON.stringify(this.messages));
+          const csrfToken = document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1];
+
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'CSRF-Token': csrfToken,
             },
             body: JSON.stringify({ messages: sendData }),
           });
@@ -54,7 +71,7 @@ async function init() {
         } catch (e) {
           this.error = true;
           this.messages.pop();
-          this.newMessage = userMessage;
+          this.newMessage = sanitizedMessage;
           this.loading = false;
         }
 
@@ -75,16 +92,18 @@ async function init() {
       },
 
       renderMarkdown() {
-        const messageElements = document.querySelectorAll('.markdown-message span');
-        messageElements.forEach((el) => {
-          el.innerHTML = marked.parse(el.textContent);
-        });
+        const messageElement = document.querySelectorAll('.markdown-message span.content');
+        if (messageElement[messageElement.length - 1].innerHTML.includes('<p>')) {
+          return;
+        }
+
+        messageElement[messageElement.length - 1].innerHTML = marked.parse(messageElement[messageElement.length - 1].textContent);
       },
     },
     mounted() {
       this.$nextTick(() => {
         this.scrollToBottom();
-        // this.renderMarkdown();
+        this.renderMarkdown();
       });
     },
     updated() {
